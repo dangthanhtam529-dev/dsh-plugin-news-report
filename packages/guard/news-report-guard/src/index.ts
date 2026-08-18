@@ -1,28 +1,34 @@
 /**
  * News-report runtime guard.
  *
- * Enforces two runtime guarantees for news-report skill outputs that markdown
- * instructions alone cannot guarantee:
+ * The skill body teaches the model how to produce a news report well — the
+ * three-step pipeline (search → process → format), the 5 fields every item
+ * must carry, and the two user lenses (software tester + self-media operator).
+ * This guard backs that contract with the two **runtime** guarantees that
+ * a behaviour prompt alone cannot deliver:
  *
- * 1. **Source routing** — domestic news searches must use `mcp__minimax__*`,
- *    international searches must use `mcp__tavily__*`. Other routes inject a
- *    `tools/post-execute` reminder (advisory, not blocking).
+ * 1. **Time window** — injects the current system time and the rolling
+ *    24h / 12h window boundaries into every `system-prompt/assemble` so the
+ *    model cannot drift outside the freshness contract.
  *
- * 2. **24h time window** — injects the current system time and the 24h
- *    window boundaries into every `system-prompt/assemble` so the model
- *    cannot drift outside the freshness contract.
+ * 2. **Source routing** — on `tools/post-execute`, if the model invokes a
+ *    tool that is not `minimax` or `tavily` for a news search, the guard
+ *    injects a reminder (advisory, not blocking). The two recognised news
+ *    search tools are the `minimax` CLI (`mmx`) and the `tavily` CLI; no
+ *    MCP wiring is required.
  *
  * 3. **Failure code surface** — `NEWS_REPORT_GUARD_FAIL` is exported so
  *    providers can register it on the LLM retry policy.
  *
  * The guard is advisory by design: it nudges the model with structured
- * `additionalContexts` and never throws on its own. The user must opt into
- * hard enforcement via a stricter provider retry policy.
+ * context and never throws on its own. The user must opt into hard
+ * enforcement via a stricter provider retry policy.
  *
  * Family notes: mirrors `repeat-tool-reminder` (advisory-only, fold reminders
  * onto `PostToolDecision`) and `timeout-policy` (export a failure code for
  * the retry policy to recognise). Field-level validation is intentionally
- * out of scope — the family guard convention is event-level, not content-level.
+ * out of scope — the family guard convention is event-level, not content-level;
+ * the 5-field and 2-lens contract lives in the skill body.
  *
  * @module @deepseek-ai/dsh-news-report-guard
  */
@@ -39,25 +45,18 @@ export const NEWS_REPORT_GUARD_FAIL = 'NEWS_REPORT_GUARD_FAIL'
 /** Cordis plugin name. */
 export const name = 'news-report-guard'
 
-/** MCP server name conventions. */
-const MINIMAX_PREFIX = 'mcp__minimax__'
-const TAVILY_PREFIX = 'mcp__tavily__'
+/** Recognised news-search tool names (the two CLI tools the harness ships). */
+const MINIMAX_TOOL = 'minimax'
+const TAVILY_TOOL = 'tavily'
 
-/** A tool name is a recognised news source if it lives under the minimax MCP server. */
-function isMinimaxTool(name: string): boolean {
-  return name.startsWith(MINIMAX_PREFIX)
+/** True if the tool name is one of the two recognised news-search CLIs. */
+function isRecognisedNewsTool(name: string): boolean {
+  return name === MINIMAX_TOOL || name === TAVILY_TOOL
 }
 
-/** A tool name is a recognised news source if it lives under the tavily MCP server. */
-function isTavilyTool(name: string): boolean {
-  return name.startsWith(TAVILY_PREFIX)
-}
-
-/** A tool is a "news search" call if it lives under minimax or tavily and matches search/fetch/extract. */
-function isNewsSearchTool(name: string): boolean {
-  if (!isMinimaxTool(name) && !isTavilyTool(name)) return false
-  const tail = name.slice(name.indexOf('__', 4) + 2)
-  return tail.includes('search') || tail.includes('fetch') || tail.includes('extract')
+/** A tool name looks like a news search/fetch/extract call. */
+function looksLikeNewsSearch(name: string): boolean {
+  return /search|fetch|extract/i.test(name)
 }
 
 /** The `{kind:'plugin'}` source stamped on every reminder this guard injects. */
@@ -91,16 +90,17 @@ function formatLocal(d: Date): string {
 
 /** A reminder produced by the source-routing hook. */
 function sourceRouteReminder(exec: ToolExecution): UserMessage | undefined {
-  if (!isNewsSearchTool(exec.name)) return undefined
-  if (isMinimaxTool(exec.name)) return undefined
-  if (isTavilyTool(exec.name)) return undefined
+  if (isRecognisedNewsTool(exec.name)) return undefined
+  // Anything that looks like a search/fetch/extract call but isn't minimax
+  // or tavily is treated as an untrusted news source.
+  if (!looksLikeNewsSearch(exec.name)) return undefined
   return createUserMessage({
     content: [{
       type: 'text',
       text:
         `news-report guard: tool "${exec.name}" is not a recognised news source.\n`
-        + '- Domestic news → use `mcp__minimax__web_search`.\n'
-        + '- International news → use `mcp__tavily__tavily_search`.\n'
+        + '- Domestic news → use the `minimax` CLI (mmx web_search).\n'
+        + '- International news → use the `tavily` CLI (tavily_search).\n'
         + 'Other sources cannot be trusted for the news-report freshness contract.',
     }],
     source: { ...PLUGIN_SOURCE, form: 'notice', summary: `unknown source: ${exec.name}` },

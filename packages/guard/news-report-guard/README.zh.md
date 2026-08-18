@@ -4,8 +4,8 @@
 
 为 `news-report` skill 提供运行时强制保障的 guard。Skill 教会模型**怎么**写新闻报；本 guard 保证报告**确实**遵守契约：
 
-1. **数据源路由** — 国内查询必须用 `mcp__minimax__*`，国际查询必须用 `mcp__tavily__*`。其它源在 `tools/post-execute` 注入提醒。
-2. **24h 时间窗** — 当前系统时间与滚动时间窗边界注入到每次 `system-prompt/assemble`，模型无法漂出时效契约。
+1. **数据源路由** — 国内查询必须用 `minimax` CLI，国际查询必须用 `tavily` CLI。其它看上去像 search/fetch/extract 的工具调用会在 `tools/post-execute` 注入提醒。
+2. **时间窗** — 当前系统时间与滚动 24h / 12h 时间窗边界注入到每次 `system-prompt/assemble`，模型无法漂出时效契约。
 3. **失败码接口** — 导出 `NEWS_REPORT_GUARD_FAIL`，供 provider 在 LLM 重试策略中注册。
 
 挂载该插件即可启用强制。它自身没有配置。随附的 CLI 组合以 `disabled: true` 包含该插件；用户必须显式启用其 `news-report-guard` 配置行。
@@ -35,12 +35,12 @@
 
 #### 模型看到什么
 
-- 每次不是 `minimax` / `tavily` 的 `mcp__*__web_search` 调用后，模型会看到一条 `user` 消息，打印标记 `{kind: 'plugin', plugin: 'news-report-guard', form: 'notice', summary: 'unknown source: ...'}`，提示切换工具。
+- 每次不是 `minimax` / `tavily` 的 search/fetch/extract 调用后，模型会看到一条 `user` 消息，打印标记 `{kind: 'plugin', plugin: 'news-report-guard', form: 'notice', summary: 'unknown source: ...'}`，提示切换 CLI 工具。
 - 每次 `system-prompt/assemble` 周期会插入一个 `news-report-time-window` 上下文，包含当前系统时间和早报 / 日报 + 晚报的时间窗边界。
 
 #### Token 效果
 
-路由提醒仅在工具被错用时出现。时间窗上下文较小（数行固定格式）并使用稳定的 `order`，跨轮 KV 前缀不抖动。
+路由提醒仅在工具被错用时出现。时间窗上下文较小（数行固定格式）并使用稳定的插入点，跨轮 KV 前缀不抖动。
 
 #### KV Cache 影响
 

@@ -4,8 +4,8 @@ English | [中文](README.zh.md)
 
 Runtime guard that backs the `news-report` skill with structural enforcement. The skill teaches the model **how** to write a news report; this guard ensures the report **does** follow the contract:
 
-1. **Source routing** — domestic news queries must use `mcp__minimax__*`, international queries must use `mcp__tavily__*`. Other sources inject a `tools/post-execute` reminder.
-2. **24h time window** — the current system time and the rolling window boundary are injected into every `system-prompt/assemble` so the model cannot drift outside the freshness contract.
+1. **Source routing** — domestic news queries must use the `minimax` CLI, international queries must use the `tavily` CLI. Other tools whose name looks like a search/fetch/extract call inject a `tools/post-execute` reminder.
+2. **Time window** — the current system time and the rolling 24h / 12h window boundaries are injected into every `system-prompt/assemble` so the model cannot drift outside the freshness contract.
 3. **Failure code surface** — `NEWS_REPORT_GUARD_FAIL` is exported so providers can register it on the LLM retry policy.
 
 Mount the plugin to enable enforcement. It has no configuration of its own; the shipped CLI composition includes the plugin as `disabled: true`; users must explicitly enable its `news-report-guard` row.
@@ -35,12 +35,12 @@ Misconfiguration throws at plugin load (`windowHours` or `eveningWindowHours` < 
 
 #### What the model sees
 
-- After every `mcp__*__web_search` call that isn't `minimax` or `tavily`, the model sees a `user` message stamped `{kind: 'plugin', plugin: 'news-report-guard', form: 'notice', summary: 'unknown source: ...'}` instructing it to switch tools.
+- After every search/fetch/extract call that isn't `minimax` or `tavily`, the model sees a `user` message stamped `{kind: 'plugin', plugin: 'news-report-guard', form: 'notice', summary: 'unknown source: ...'}` instructing it to switch CLI tools.
 - Every `system-prompt/assemble` cycle prepends a `news-report-time-window` context with the current system time and the morning/daily + evening window boundaries.
 
 #### Token effect
 
-The routing reminder rides only when a tool is mistargeted. The time-window context is small (a few lines, fixed format) and reuses a stable `order` so its KV prefix doesn't churn between turns.
+The routing reminder rides only when a tool is mistargeted. The time-window context is small (a few lines, fixed format) and reuses a stable insertion point so its KV prefix doesn't churn between turns.
 
 #### KV Cache effect
 
