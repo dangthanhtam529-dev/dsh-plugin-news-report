@@ -1,0 +1,19 @@
+diff --git a/packages/bundle/base/package.json b/packages/bundle/base/package.json
+--- a/packages/bundle/base/package.json
++++ b/packages/bundle/base/package.json
+@@ -67,6 +67,7 @@
+     "@deepseek-ai/dsh-permission-presets": "workspace:^",
+     "@deepseek-ai/dsh-plan-mode": "workspace:^",
+     "@deepseek-ai/dsh-pwsh-sandbox": "workspace:^",
++    "@deepseek-ai/dsh-news-report-guard": "workspace:^",
+     "@deepseek-ai/dsh-repeat-tool-reminder": "workspace:^",
+     "@deepseek-ai/dsh-sandbox-local": "workspace:^",
+     "@deepseek-ai/dsh-sandbox-policy": "workspace:^",
+@@ -82,6 +83,7 @@
+     "@deepseek-ai/dsh-skill": "workspace:^",
+     "@deepseek-ai/dsh-skill-badge": "workspace:^",
+     "@deepseek-ai/dsh-skill-filesystem": "workspace:^",
++    "@deepseek-ai/dsh-skill-news-report": "workspace:^",
+     "@deepseek-ai/dsh-spill-local": "workspace:^",
+     "@deepseek-ai/dsh-spill-policy": "workspace:^",
+     "@deepseek-ai/dsh-subagent": "workspace:^",

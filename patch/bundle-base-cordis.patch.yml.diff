@@ -1,0 +1,28 @@
+diff --git a/packages/bundle/base/cordis.patch.yml b/packages/bundle/base/cordis.patch.yml
+index e9567d9206..7fc12a0278 100644
+--- a/packages/bundle/base/cordis.patch.yml
++++ b/packages/bundle/base/cordis.patch.yml
+@@ -244,6 +244,10 @@
+       name: '@deepseek-ai/dsh-skill-badge'
+       disabled: true
+ 
++    - id: skill-news-report
++      name: '@deepseek-ai/dsh-skill-news-report'
++      disabled: true
++
+     - id: tool-skill
+       name: '@deepseek-ai/dsh-tool-skill'
+ 
+@@ -393,6 +397,12 @@
+         thresholds: [3, 5, 8]
+         argumentsPreviewChars: 500
+ 
++    # News-report runtime guard: enforces source routing, 24h window,
++    # and field completeness for news-report skill outputs.
++    - id: news-report-guard
++      name: '@deepseek-ai/dsh-news-report-guard'
++      disabled: true
++
+     # Every mode enables the stable model-facing web_search tool. DeepSeek search
+     # resolves the same DEEPSEEK_API_KEY credential the Models page manages for
+     # chat, at each search; its Messages endpoint is separate from the

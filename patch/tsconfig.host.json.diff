@@ -1,0 +1,19 @@
+diff --git a/tsconfig.host.json b/tsconfig.host.json
+--- a/tsconfig.host.json
++++ b/tsconfig.host.json
+@@ -182,6 +182,7 @@
+     { "path": "./packages/skill/skill" },
+     { "path": "./packages/skill/skill-badge" },
+     { "path": "./packages/skill/skill-filesystem" },
++    { "path": "./packages/skill/skill-news-report" },
+     { "path": "./packages/skill/tool-skill" },
+     { "path": "./packages/interaction/tool-ask-user" },
+     { "path": "./packages/context/agent-instructions" },
+@@ -274,6 +275,7 @@
+     { "path": "./packages/preset/agent-presets" },
+     { "path": "./packages/preset/persona" },
+     { "path": "./packages/guard/repeat-tool-reminder" },
++    { "path": "./packages/guard/news-report-guard" },
+     { "path": "./packages/extensions/cordis-host-runner" },
+     { "path": "./packages/extensions/tool-cordis" },
+     { "path": "./packages/hooks/hook-protocol" },
