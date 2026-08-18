@@ -21,7 +21,7 @@ const RESOURCE_BASE = {
   path: fileURLToPath(new URL('../assets/', import.meta.url)),
 } as const
 const INVOCATION = { modelInvocable: true, userInvocable: true } as const
-const DESCRIPTION = 'Build a news report (morning briefing, evening wrap-up, or daily digest) by following the three-step pipeline — source search → data processing → layout. Use when the user asks for "today\'s news", a morning/evening briefing, a daily digest, a multi-domain news summary, or any task that should look like a structured newspaper-style report. Each item must carry the five required fields (title, date, source, link, body) and be read through both the software-tester and the self-media-operator lenses.'
+const DESCRIPTION = 'Build a news report (morning briefing, evening wrap-up, or daily digest) by following the three-step pipeline — source search → data processing → layout. Use when the user asks for "today\'s news", a morning/evening briefing, a daily digest, a multi-domain news summary, or any task that should look like a structured newspaper-style report. Each item must carry the five required fields (title, date, source, link, full-coverage body of at least 300 characters) and be read through both the software-tester and the self-media-operator lenses.'
 const CANDIDATE: SkillCandidate = {
   name: 'news-report',
   description: DESCRIPTION,

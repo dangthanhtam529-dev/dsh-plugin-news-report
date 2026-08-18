@@ -13,7 +13,7 @@ describe('dsh-skill-news-report', () => {
 
     expect(await ctx.skills.list()).toEqual([{
       name: 'news-report',
-      description: 'Build a news report (morning briefing, evening wrap-up, or daily digest) by following the three-step pipeline — source search → data processing → layout. Use when the user asks for "today\'s news", a morning/evening briefing, a daily digest, a multi-domain news summary, or any task that should look like a structured newspaper-style report. Each item must carry the five required fields (title, date, source, link, body) and be read through both the software-tester and the self-media-operator lenses.',
+      description: 'Build a news report (morning briefing, evening wrap-up, or daily digest) by following the three-step pipeline — source search → data processing → layout. Use when the user asks for "today\'s news", a morning/evening briefing, a daily digest, a multi-domain news summary, or any task that should look like a structured newspaper-style report. Each item must carry the five required fields (title, date, source, link, full-coverage body of at least 300 characters) and be read through both the software-tester and the self-media-operator lenses.',
       invocation: { modelInvocable: true, userInvocable: true },
       provider: 'news-report',
       source: 'bundled',
@@ -24,6 +24,8 @@ describe('dsh-skill-news-report', () => {
     expect(loaded?.content).toContain('软件测试工程师')
     expect(loaded?.content).toContain('自媒体')
     expect(loaded?.content).toContain('5 字段')
+    expect(loaded?.content).toContain('300 字')
+    expect(loaded?.content).toContain('事件全貌')
     expect(loaded?.resourceBase).toEqual({ kind: 'directory', path: resourcePath })
 
     await fiber.dispose()
