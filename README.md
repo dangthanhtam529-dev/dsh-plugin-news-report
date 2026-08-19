@@ -1,129 +1,103 @@
 # dsh-plugin-news-report
 
-A two-package DeepSeek Harness plugin that teaches a session to produce structured news reports (morning briefing, evening wrap-up, daily digest) and backs that teaching with a runtime guard.
+## 为什么做这个
 
-The plugin is intentionally split:
+你让 AI 做一份"今天的新闻早报"，十有八九会拿到这样的东西：
 
-- `packages/skill/skill-news-report` — the model-facing skill provider. It bundles a `news-report` candidate plus its body (`assets/news-report.md`). When the user asks for a news report, the harness loads this skill and the model reads the body.
-- `packages/guard/news-report-guard` — the runtime guard. It listens on `system-prompt/assemble` to inject a fresh-news time window into every turn, and on `tools/post-execute` to flag news-shaped calls routed through untrusted sources.
+> 1. OpenAI 发布新模型
+> 2. 谷歌收购某公司
+> 3. 英伟达股价上涨
+> ...
 
-The skill teaches the contract. The guard backs it with events.
+标题列表。每条一两句话。看起来"对"，但读完你**还是不知道发生了什么**。看一眼标题和看完一整条新闻，是两件事。
 
-## What the report contract is
+这份插件的目标，是让 AI 写出来的东西更像一个真正的编辑写出来的稿子，而不是一个搜索关键词的拼贴。
 
-Every item in a news report must carry five fields:
+## 我们的设计思路
 
-- `title`
-- `date`
-- `source`
-- `link`
-- `body` — at least 300 characters of full coverage, not a one-line summary
+我们没有去训练模型（做不到），也没去微调提示词（脆弱），而是把"一份好新闻报应该是什么样"拆成两层，分别用不同的方式落地：
 
-Every report must be read through both lenses the user implicitly expects:
+### 第一层：教它怎么写（skill）
 
-- **software-tester** — what was tested, what regressed, what shipped
-- **self-media-operator** — what is the hook, what is the share-worthy framing
+我们把"如何产出一份合格新闻报"写进了 skill 正文。这部分就是教模型：
 
-Every report must respect a time window: 24 hours for morning / daily, 12 hours for evening. Items outside the window must be rejected, not folded in.
+- 先有**原料**（搜索）
+- 再**加工**（筛选 + 扩写 + 加视角）
+- 最后**排版**（编辑感）
 
-## How the skill body constrains the model
+哪一步都不能省，跳步骤的稿子是不能要的。
 
-The skill body (`packages/skill/skill-news-report/assets/news-report.md`) is a three-step pipeline:
+每一篇合格稿子里，**每一条新闻**必须带齐：
 
-```
-Step 1  信息源检索  →  raw search results
-Step 2  数据加工    →  structured items + lens analysis
-Step 3  排版展示    →  formatted report
-```
+- 标题
+- 日期
+- 来源
+- 链接
+- 一段**完整的**主体（300 字起步，把"这件事是什么、为什么发生、进行到什么阶段、涉及谁、关键数字是什么"讲清楚——不是一句话摘要）
 
-Hard rule between steps: **Step 1 failure stops the run.** Never carry dirty data into Step 2.
+模型自己读完一条新闻，应该立刻知道全貌，而不是还要再去搜。
 
-The skill body starts with a mandatory discovery rule (`### 1.0 工具发现顺序`):
+然后，**两份稿子不能只是同一种视角**。我们给模型两个示例视角：
 
-1. Read `## Skills` in the system prompt and check `available_skills`.
-2. If `tavily-search` is listed, use it (it wraps `tvly` via `Bash(tvly *)`).
-3. If `mmx-cli` is listed, use it (it wraps `mmx` via `Bash(mmx *)`).
-4. Only fall back to the bare `tvly` / `mmx` CLI when the corresponding skill is missing.
+- 软件测试工程师（如果你是做测试的，你就换上"测试视角"——这只是一种举例）
+- 自媒体运营（如果你是做自媒体的，你也换上你的视角）
 
-The reason this rule exists: the original body taught the wrong names (`tavily` and `minimax`) for what are actually two CLI binaries (`tvly` and `mmx`). Without this rule, the model has been observed running `where tavily`, finding nothing, and wrongly concluding the search tool is unavailable. The `tavily-search` and `mmx-cli` skills are the real entry points in a typical dsh deployment (they ship under `$DSH_AGENTS_HOME/skills/`, default `~/.agents/skills/`).
+**这两个视角不是固定的**。它们只是模板。重要的是：**你读这条新闻的时候，带着你的身份去看，会看到什么**——这才是"视角"。
 
-Step 1 then routes per subject:
+### 第二层：在它跑偏时拉一把（guard）
 
-- Domestic / Chinese-language sources → `mmx-cli` skill (fallback: `mmx web_search`)
-- International / English sources → `tavily-search` skill (fallback: `tvly search`)
-- Mixed → run both in parallel
+光教，模型还是会在边缘情况掉链子。所以我们还加了一个**运行时的协作者**——guard。
 
-Step 2 turns each raw result into a five-field, 300+ character body and applies both lenses. Step 3 lays the result out as a newspaper-style report.
+它不是审查员，也不是拦路虎。它做的事只有两件：
 
-## How the guard backs the contract at runtime
+- **随时告诉模型"现在是什么时候"**：每次模型开始一段新对话时，guard 会悄悄把当前系统时间和"过去 24 小时 / 过去 12 小时"这种滚动窗口塞进模型的视野里。这样模型就不会把三天前的旧闻当成今天的新闻
+- **善意提醒"这个工具不太适合当新闻源"**：模型有时候会去用一些通用搜索工具查新闻。guard 不会阻止，但会温柔地提一句："这种来源可能不太适合新闻报，要不要试试专门的新闻搜索工具"
 
-The guard is a Cordis plugin. Its `apply(ctx, config)` installs two listeners:
+这里有个细节：**guard 默认认两个新闻搜索工具**——minimax 和 tavily。`minimax` 是国内新闻源的常用入口，`tavily` 是国际新闻源的常用入口。
 
-```ts
-// 1. Time-window injection — fires on every system-prompt assembly.
-ctx.on('system-prompt/assemble', (assembly, _ctx, next) => {
-  const now = new Date()
-  const morningTo = new Date(now.getTime() - windowHours * 3_600_000)
-  const eveningTo = new Date(now.getTime() - eveningWindowHours * 3_600_000)
-  assembly.contexts.push({
-    name: 'news-report-time-window',
-    text: `[news-report-guard] now=${formatLocal(now)}\n` +
-          `morning/daily window: ${formatLocal(morningTo)} → ${formatLocal(now)}\n` +
-          `evening window: ${formatLocal(eveningTo)} → ${formatLocal(now)}\n` +
-          'Reject any news item whose timestamp falls outside the window.',
-  })
-  return next()
-})
+**但你用什么取决于你自己**。如果你订阅的是别的搜索服务，或者你公司有自己的新闻 API API，guard 默认识别的名单可能跟你不一致——这没关系，它只是默认。具体的来源选择和接入方式由你按你实际情况来安排。
 
-// 2. Source routing — fires after every tool call.
-ctx.on('tools/post-execute', async (exec, _result, next) => {
-  const reminder = sourceRouteReminder(exec) // checks exec.name
-  const downstream = await next()
-  // prepends an advisory reminder if the tool is not minimax/tavily
-  return downstream
-})
-```
+## 怎么把这俩捏到一起
 
-Both listeners are passive by default:
+这是最妙的部分：**两层不是重复的，是分工的**。
 
-- The time-window injection is always active and visible. Every system prompt the model sees during a news-report session contains a `news-report-time-window` context entry with the current clock and the rolling 24h/12h windows. This is what stops the model from drifting outside the freshness contract.
-- The source-routing reminder is dormant on a stock dsh deployment. The whitelist is `minimax` / `tavily` (CLI tool names); neither ships in upstream, and the actual search entry points (`tavily-search`, `mmx-cli`) reach the model through `Bash`, whose `exec.name` is `bash` — which does not match the regex `/search|fetch|extract/i` and does not match the whitelist. So the reminder never fires on the typical workflow.
+- skill 负责"教会"——模型读完正文，它就知道结构、字段、视角该怎么写
+- guard 负责"陪伴"——每次模型开始新一轮思考时，guard 在背景里把时间和来源的事提醒一遍
 
-The guard also exports `NEWS_REPORT_GUARD_FAIL` for retry policies that want to treat a hard guard failure as a retryable condition.
+只有"教"没有"陪"，模型在长对话里会慢慢忘掉刚开头的规矩；只有"陪"没有"教"，模型压根不知道规矩是什么。
 
-## How the two halves fit together
+## 谁适合用
 
-The skill body and the guard are not redundant — they enforce different layers of the same contract:
+- 你经常让 AI 整理新闻、做早报晚报日报
+- 你受够了"标题列表"式输出，想要能"读完就知道发生了什么"的稿子
+- 你想从新闻里看出一些"从我这个角度才看得到"的东西（你是做测试的、是做投资的、是做运营的、是做产品的……都可以）
 
-| Concern | Where enforced |
-|---|---|
-| Three-step pipeline (search → process → format) | skill body |
-| Five-field-per-item, 300+ char body, two-lens analysis | skill body |
-| Discover skills before reaching for CLI binaries | skill body `1.0 工具发现顺序` |
-| Current time + 24h/12h rolling window in context | guard `system-prompt/assemble` |
-| "Don't use untrusted news sources" advisory | guard `tools/post-execute` |
-| Retryable failure code for hard guard hits | guard `NEWS_REPORT_GUARD_FAIL` |
+## 怎么用起来
 
-The skill body teaches. The guard reminds.
+最基础的三步：
 
-## Configuration
+1. 把插件集成进你的 dsh 环境（看 INSTALL.md）
+2. 在你的 profile 里把 `skill-news-report` 和 `news-report-guard` 两个开关打开
+3. 跟模型说"做一份今天的早报 / 晚报 / 日报"
 
-The guard accepts three options (all defaulted by `z.object`):
+模型会先看 `## Skills` 区域里有没有 tavily-search、minimax 之类的搜索入口。有就走那条路，没有再退回到通用搜索。然后按三步流水线给你出稿。
 
-```ts
-{
-  windowHours: 24,          // morning / daily window
-  eveningWindowHours: 12,   // evening window
-  injectTimeContext: true,  // whether to inject the time-window context
-}
-```
+## 你可以按你的情况调的地方
 
-Invalid values throw fail-loud at plugin load. The skill provider takes no configuration.
+我们有意让这个插件有**很多可调的地方**——你不是只能照搬：
 
-## Defaults
+- **你是什么身份？** skill 默认给的两个视角是测试 + 自媒体举例，你可以换成"产品经理 + 投资人""运营 + 编辑""研究员 + 用户"任何你需要的组合
+- **你用什么搜索工具？** 默认的 minimax（国内）+ tavily（国际）只是参考。如果你用别的工具（比如你公司内网的搜索），guard 的来源路由不会瞎喷，你直接用就行
+- **你的时间窗多宽？** 默认早报看过去 24 小时、晚报看过去 12 小时。如果你做的是周报，月改可以调到 168 小时；如果你做的是"今天这一小时内"的热榜，可以缩到 1 小时
+- **你要多严？** guard 默认是"温柔的"——只提醒不阻止。如果你想要硬拦截（比如生产环境不允许非新闻源出现），你可以在你的 overlay 里把 guard 的策略调严
 
-Both packages are registered as `disabled: true` in the base bundle, matching the upstream convention for opt-in capabilities (the same as `repeat-tool-reminder`, `skill-badge`, etc.). Users opt in by overriding the `disabled` flag in their profile's `cordis.patch.yml` or via the web UI's Settings → Plugins panel.
+具体怎么调看对应插件的 README 和源码注释，但思路是：**默认值是建议，不是约束**。
 
-## Install
+## 它不做什么
 
-See `INSTALL.md` for the three base-bundle patches and the steps to enable the plugins.
+诚实地说：
+
+- 它不能让 AI 真的"懂"新闻。它只能让 AI 更守规矩地按一个框架写
+- 它不能替你判断这条新闻**重要性**——这个模型自己决定，我们不替他排序
+- guard 不会替你"审查"内容——它不决定什么能发什么不能发
+- 它不帮你排版成 PPT、不帮你发到群——出了稿子，剩下的事是你的
