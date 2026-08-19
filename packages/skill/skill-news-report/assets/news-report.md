@@ -55,6 +55,17 @@ metadata:
 
 **强约束**:**第一步失败 → 停止**,不要把脏数据带到第二步。
 
+### 1.0 工具发现顺序（强制，任何搜索之前）
+
+任何搜索调用之前，**先**读 system-prompt 里的 `## Skills` section，看 `available_skills` 列表里有没有：
+
+| 任务 | skill 名 | 暴露的入口 |
+|---|---|---|
+| 国外 / 国际 / 英文媒体 | `tavily-search` | `Bash(tvly *)` |
+| 国内 / 中文媒体 | `mmx-cli` | `Bash(mmx *)` |
+
+**规则**：发现 skill 在列就用 skill 协议（走 Bash 调用即可，skill 已经把 CLI 写好）。**禁止**绕过 skill 直接 `where tavily` 找 CLI，也**禁止**凭直觉判断"tavily 不可用"。只有当 skill 不在列表里时，才退到 `tvly` / `mmx` CLI 直连。
+
 ---
 
 ## Step 1 信息源检索
@@ -63,8 +74,8 @@ metadata:
 
 | 主体地域 | 工具 |
 |---|---|
-| 国内 → `minimax` CLI | 中文媒体 / 国内主体（`mmx web_search`） |
-| 国外 → `tavily` CLI | 英文媒体 / 国际主体（`tavily_search`） |
+| 国内 → `mmx-cli` skill | 中文媒体 / 国内主体（`mmx web_search`） |
+| 国外 → `tavily-search` skill | 英文媒体 / 国际主体（`tvly search`） |
 | 混合 | 两个工具并行调用 |
 
 **判断 3 维度**:事件主体所在地 / 报道语言 / 主要受众。
@@ -90,8 +101,8 @@ metadata:
 
 | 情况 | 处理 |
 |---|---|
-| `minimax` 不可用 | 用 web_search 手动整理 |
-| `tavily` 不可用 | 用 web_search 国外源 |
+| `mmx-cli` skill 与 `mmx` 都不可用 | 用 web_search 手动整理 |
+| `tavily-search` skill 与 `tvly` 都不可用 | 用 web_search 国外源 |
 | 两个都不可用 | **降级为昨日素材整理**,明示标注 |
 | 数据部分缺失 | 标"部分新闻缺失" |
 | 数据完全缺失 | **停止执行**,告知用户 |
